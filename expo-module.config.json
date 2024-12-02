@@ -1,0 +1,17 @@
+{
+  "platforms": [
+    "apple",
+    "android",
+    "web"
+  ],
+  "apple": {
+    "modules": [
+      "ExpoGbpingModule"
+    ]
+  },
+  "android": {
+    "modules": [
+      "expo.modules.gbping.ExpoGbpingModule"
+    ]
+  }
+}
