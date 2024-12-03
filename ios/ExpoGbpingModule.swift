@@ -8,8 +8,10 @@ public class ExpoGbpingModule: Module {
   public func definition() -> ModuleDefinition {
     Name("ExpoGbping")
 
-    AsyncFunction("ping") { (url: String, timeout: TimeInterval?, promise: Promise) in
-      let operation = PingOperation(url: url, timeout: timeout, promise: promise)
+    AsyncFunction("ping") {
+      (url: String, timeout: TimeInterval?, promise: Promise) in
+      let operation = PingOperation(
+        url: url, timeout: timeout, promise: promise)
       self.pingQueue.append(operation)
       self.processQueue()
     }
@@ -21,7 +23,6 @@ public class ExpoGbpingModule: Module {
     }
 
     isPinging = true
-
     let ping = GBPing()
     ping.host = operation.url
     if let timeout = operation.timeout {
@@ -41,18 +42,23 @@ public class ExpoGbpingModule: Module {
     ping.delegate = delegate
 
     ping.setup { [weak self] success, error in
-      guard let self = self else { return }
-
+      guard self != nil else { return }
       if success {
         ping.startPinging()
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-          ping.stop()
-          delegate.cleanupIfNeeded()  // Ensure cleanup is always called
+        DispatchQueue.main.asyncAfter(
+          deadline: .now() + (operation.timeout ?? 1.0)
+        ) {
+          // Explicitly check if ping is still active
+          if ping.isPinging {
+            ping.stop()
+            delegate.pingTimeoutManuallyTriggered()
+          }
         }
       } else {
         operation.promise.reject(
-          "PING_SETUP_ERROR", error?.localizedDescription ?? "Unknown error during setup.")
+          "PING_SETUP_ERROR",
+          error?.localizedDescription ?? "Unknown error during setup.")
         delegate.cleanupIfNeeded()
       }
     }
@@ -74,7 +80,7 @@ private class PingOperation {
 private class PingDelegate: NSObject, GBPingDelegate {
   private let promise: Promise
   private let cleanup: () -> Void
-  private var didCleanup: Bool = false  // Prevent double cleanup
+  private var didCleanup: Bool = false
 
   init(promise: Promise, cleanup: @escaping () -> Void) {
     self.promise = promise
@@ -88,8 +94,13 @@ private class PingDelegate: NSObject, GBPingDelegate {
     }
   }
 
+  func pingTimeoutManuallyTriggered() {
+    promise.reject("PING_TIMEOUT", "Ping timed out (forcibly).")
+    cleanupIfNeeded()
+  }
+
   func ping(_ pinger: GBPing, didReceiveReplyWith summary: GBPingSummary) {
-    promise.resolve(summary.rtt * 1000)  // RTT in milliseconds
+    promise.resolve(summary.rtt * 1000)
     cleanupIfNeeded()
   }
 
@@ -99,12 +110,16 @@ private class PingDelegate: NSObject, GBPingDelegate {
   }
 
   func ping(_ pinger: GBPing, didFailWithError error: Error) {
-    promise.reject("PING_ERROR", "Ping failed with error: \(error.localizedDescription)")
+    promise.reject(
+      "PING_ERROR", "Ping failed with error: \(error.localizedDescription)")
     cleanupIfNeeded()
   }
 
-  func ping(_ pinger: GBPing, didFailToSendPingWith summary: GBPingSummary, error: Error) {
-    promise.reject("PING_SEND_ERROR", "Failed to send ping: \(error.localizedDescription)")
+  func ping(
+    _ pinger: GBPing, didFailToSendPingWith summary: GBPingSummary, error: Error
+  ) {
+    promise.reject(
+      "PING_SEND_ERROR", "Failed to send ping: \(error.localizedDescription)")
     cleanupIfNeeded()
   }
 }

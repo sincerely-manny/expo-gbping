@@ -22,7 +22,7 @@ Run `npx pod-install` after installing the npm package.
 Pings the specified host and returns the round-trip time in milliseconds.
 Parameters:
 - `host` (string) - The host to ping.
-- `timeout` (number) - The maximum time to wait for a response in milliseconds (optional).
+- `timeout` (number) - The maximum time to wait for a response in milliseconds (optional, default is 1000).
 
 # Usage
 
