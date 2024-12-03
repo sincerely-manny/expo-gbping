@@ -1,6 +1,6 @@
 {
   "name": "expo-gbping",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Expo module wrapper for GBPing Cocoapod",
   "main": "build/index.js",
   "types": "build/index.d.ts",
