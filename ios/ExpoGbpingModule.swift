@@ -2,69 +2,109 @@ import ExpoModulesCore
 import GBPing
 
 public class ExpoGbpingModule: Module {
-  private var ping: GBPing?
-  private var pingDelegate: PingDelegate?
+  private var pingQueue: [PingOperation] = []
+  private var isPinging: Bool = false
 
   public func definition() -> ModuleDefinition {
     Name("ExpoGbping")
 
-    AsyncFunction("ping") {
-      (url: String, timeout: TimeInterval?, promise: Promise) in
+    AsyncFunction("ping") { (url: String, timeout: TimeInterval?, promise: Promise) in
+      let operation = PingOperation(url: url, timeout: timeout, promise: promise)
+      self.pingQueue.append(operation)
+      self.processQueue()
+    }
+  }
 
-      self.ping = GBPing()
-      guard let ping = self.ping else {
-        promise.reject(
-          "PING_INIT_ERROR", "Failed to initialize GBPing instance.")
-        return
+  private func processQueue() {
+    guard !isPinging, let operation = pingQueue.first else {
+      return
+    }
+
+    isPinging = true
+
+    let ping = GBPing()
+    ping.host = operation.url
+    if let timeout = operation.timeout {
+      ping.timeout = timeout
+    }
+    ping.pingPeriod = 0.9
+
+    let delegate = PingDelegate(
+      promise: operation.promise,
+      cleanup: { [weak self] in
+        guard let self = self else { return }
+        self.isPinging = false
+        self.pingQueue.removeFirst()
+        self.processQueue()
       }
+    )
+    ping.delegate = delegate
 
-      let delegate = PingDelegate(promise: promise)
-      self.pingDelegate = delegate
-      ping.delegate = delegate
+    ping.setup { [weak self] success, error in
+      guard let self = self else { return }
 
-      ping.host = url
-      if let timeout {
-        ping.timeout = timeout
-      }
+      if success {
+        ping.startPinging()
 
-      ping.setup { [weak self] success, error in
-        if success {
-          ping.startPinging()
-
-          DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            ping.stop()
-            self?.ping = nil
-            self?.pingDelegate = nil
-          }
-        } else {
-          promise.reject(
-            "PING_SETUP_ERROR",
-            error?.localizedDescription ?? "Unknown error during setup.")
-          self?.ping = nil
-          self?.pingDelegate = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+          ping.stop()
+          delegate.cleanupIfNeeded()  // Ensure cleanup is always called
         }
+      } else {
+        operation.promise.reject(
+          "PING_SETUP_ERROR", error?.localizedDescription ?? "Unknown error during setup.")
+        delegate.cleanupIfNeeded()
       }
     }
   }
 }
 
+private class PingOperation {
+  let url: String
+  let timeout: TimeInterval?
+  let promise: Promise
+
+  init(url: String, timeout: TimeInterval?, promise: Promise) {
+    self.url = url
+    self.timeout = timeout
+    self.promise = promise
+  }
+}
+
 private class PingDelegate: NSObject, GBPingDelegate {
   private let promise: Promise
+  private let cleanup: () -> Void
+  private var didCleanup: Bool = false  // Prevent double cleanup
 
-  init(promise: Promise) {
+  init(promise: Promise, cleanup: @escaping () -> Void) {
     self.promise = promise
+    self.cleanup = cleanup
+  }
+
+  func cleanupIfNeeded() {
+    if !didCleanup {
+      didCleanup = true
+      cleanup()
+    }
   }
 
   func ping(_ pinger: GBPing, didReceiveReplyWith summary: GBPingSummary) {
-    promise.resolve(summary.rtt * 1000)
+    promise.resolve(summary.rtt * 1000)  // RTT in milliseconds
+    cleanupIfNeeded()
   }
 
   func ping(_ pinger: GBPing, didTimeoutWith summary: GBPingSummary) {
     promise.reject("PING_TIMEOUT", "Ping timed out: \(summary)")
+    cleanupIfNeeded()
   }
 
   func ping(_ pinger: GBPing, didFailWithError error: Error) {
-    promise.reject(
-      "PING_ERROR", "Ping failed with error: \(error.localizedDescription)")
+    promise.reject("PING_ERROR", "Ping failed with error: \(error.localizedDescription)")
+    cleanupIfNeeded()
+  }
+
+  func ping(_ pinger: GBPing, didFailToSendPingWith summary: GBPingSummary, error: Error) {
+    promise.reject("PING_SEND_ERROR", "Failed to send ping: \(error.localizedDescription)")
+    cleanupIfNeeded()
   }
 }
