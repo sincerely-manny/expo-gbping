@@ -1,37 +1,40 @@
-import { useEvent } from 'expo';
-import ExpoGbping, { ExpoGbpingView } from 'expo-gbping';
-import { Button, SafeAreaView, ScrollView, Text, View } from 'react-native';
+import GBPing from "expo-gbping";
+import { useState } from "react";
+import {
+  ActivityIndicator,
+  Button,
+  SafeAreaView,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 
 export default function App() {
-  const onChangePayload = useEvent(ExpoGbping, 'onChange');
+  const [result, setResult] = useState<string | null>(null);
+  const [pinging, setPinging] = useState(false);
+
+  const handlePing = async () => {
+    setPinging(true);
+    try {
+      const r = await GBPing.ping("google.com").catch((e) => console.error(e));
+      setResult("Ping successful: " + r);
+    } catch (error) {
+      setResult("Ping failed: " + JSON.stringify(error));
+    }
+    setPinging(false);
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.container}>
         <Text style={styles.header}>Module API Example</Text>
-        <Group name="Constants">
-          <Text>{ExpoGbping.PI}</Text>
-        </Group>
-        <Group name="Functions">
-          <Text>{ExpoGbping.hello()}</Text>
-        </Group>
         <Group name="Async functions">
-          <Button
-            title="Set value"
-            onPress={async () => {
-              await ExpoGbping.setValueAsync('Hello from JS!');
-            }}
-          />
+          <Button title="pingAsync" onPress={handlePing} />
         </Group>
-        <Group name="Events">
-          <Text>{onChangePayload?.value}</Text>
-        </Group>
-        <Group name="Views">
-          <ExpoGbpingView
-            url="https://www.example.com"
-            onLoad={({ nativeEvent: { url } }) => console.log(`Loaded: ${url}`)}
-            style={styles.view}
-          />
+        <Group name="Result">
+          <Text>
+            {pinging && <ActivityIndicator />} {result}
+          </Text>
         </Group>
       </ScrollView>
     </SafeAreaView>
@@ -58,13 +61,13 @@ const styles = {
   },
   group: {
     margin: 20,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 10,
     padding: 20,
   },
   container: {
     flex: 1,
-    backgroundColor: '#eee',
+    backgroundColor: "#eee",
   },
   view: {
     flex: 1,

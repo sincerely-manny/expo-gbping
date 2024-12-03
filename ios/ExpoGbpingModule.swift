@@ -1,48 +1,70 @@
 import ExpoModulesCore
+import GBPing
 
 public class ExpoGbpingModule: Module {
-  // Each module class must implement the definition function. The definition consists of components
-  // that describes the module's functionality and behavior.
-  // See https://docs.expo.dev/modules/module-api for more details about available components.
+  private var ping: GBPing?
+  private var pingDelegate: PingDelegate?
+
   public func definition() -> ModuleDefinition {
-    // Sets the name of the module that JavaScript code will use to refer to the module. Takes a string as an argument.
-    // Can be inferred from module's class name, but it's recommended to set it explicitly for clarity.
-    // The module will be accessible from `requireNativeModule('ExpoGbping')` in JavaScript.
     Name("ExpoGbping")
 
-    // Sets constant properties on the module. Can take a dictionary or a closure that returns a dictionary.
-    Constants([
-      "PI": Double.pi
-    ])
+    AsyncFunction("ping") {
+      (url: String, timeout: TimeInterval?, promise: Promise) in
 
-    // Defines event names that the module can send to JavaScript.
-    Events("onChange")
-
-    // Defines a JavaScript synchronous function that runs the native code on the JavaScript thread.
-    Function("hello") {
-      return "Hello world! 👋"
-    }
-
-    // Defines a JavaScript function that always returns a Promise and whose native code
-    // is by default dispatched on the different thread than the JavaScript runtime runs on.
-    AsyncFunction("setValueAsync") { (value: String) in
-      // Send an event to JavaScript.
-      self.sendEvent("onChange", [
-        "value": value
-      ])
-    }
-
-    // Enables the module to be used as a native view. Definition components that are accepted as part of the
-    // view definition: Prop, Events.
-    View(ExpoGbpingView.self) {
-      // Defines a setter for the `url` prop.
-      Prop("url") { (view: ExpoGbpingView, url: URL) in
-        if view.webView.url != url {
-          view.webView.load(URLRequest(url: url))
-        }
+      self.ping = GBPing()
+      guard let ping = self.ping else {
+        promise.reject(
+          "PING_INIT_ERROR", "Failed to initialize GBPing instance.")
+        return
       }
 
-      Events("onLoad")
+      let delegate = PingDelegate(promise: promise)
+      self.pingDelegate = delegate
+      ping.delegate = delegate
+
+      ping.host = url
+      if let timeout {
+        ping.timeout = timeout
+      }
+
+      ping.setup { [weak self] success, error in
+        if success {
+          ping.startPinging()
+
+          DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            ping.stop()
+            self?.ping = nil
+            self?.pingDelegate = nil
+          }
+        } else {
+          promise.reject(
+            "PING_SETUP_ERROR",
+            error?.localizedDescription ?? "Unknown error during setup.")
+          self?.ping = nil
+          self?.pingDelegate = nil
+        }
+      }
     }
+  }
+}
+
+private class PingDelegate: NSObject, GBPingDelegate {
+  private let promise: Promise
+
+  init(promise: Promise) {
+    self.promise = promise
+  }
+
+  func ping(_ pinger: GBPing, didReceiveReplyWith summary: GBPingSummary) {
+    promise.resolve(summary.rtt * 1000)
+  }
+
+  func ping(_ pinger: GBPing, didTimeoutWith summary: GBPingSummary) {
+    promise.reject("PING_TIMEOUT", "Ping timed out: \(summary)")
+  }
+
+  func ping(_ pinger: GBPing, didFailWithError error: Error) {
+    promise.reject(
+      "PING_ERROR", "Ping failed with error: \(error.localizedDescription)")
   }
 }
