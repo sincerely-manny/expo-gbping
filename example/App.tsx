@@ -1,4 +1,4 @@
-import GBPing from "expo-gbping";
+import GBPing, { PingStatus } from "expo-gbping";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -13,7 +13,7 @@ import {
 export default function App() {
   const [result, setResult] = useState<string | null>(null);
   const [pinging, setPinging] = useState(false);
-  const [url, setUrl] = useState("google.com\nfacebook.com\n192.0.2.1");
+  const [url, setUrl] = useState("google.com\nfacebook.com\n192.168.2.255");
   const [timeout, setTimeout] = useState<number | undefined>(undefined);
 
   const handlePing = async () => {
@@ -32,6 +32,36 @@ export default function App() {
     }
     setPinging(false);
   };
+
+  const handleStartPinging = async () => {
+    setResult("");
+    setPinging(true);
+    const u = url.split(`\n`).pop();
+    if (!u) {
+      setPinging(false);
+      return;
+    }
+    GBPing.startPinging({
+      url: url.split(`\n`).pop() || "",
+      timeout: timeout,
+      interval: 1000,
+      onPing: (event) => {
+        console.log(JSON.stringify(event, null, 2));
+        if (event.status === PingStatus.Success) {
+          setResult((prev) => `${prev}\n✅ ${event.sequenceNumber}. ${event.host}: ${event.rtt?.toFixed(2)}ms `);
+        } else {
+          setResult((prev => `${prev}\n❌ ${event.error}`));
+        }
+      },
+    });
+  }
+
+  const handleStopPinging = () => {
+    setPinging(false);
+    GBPing.stopPinging();
+  }
+
+
 
   return (
     <SafeAreaView style={styles.container}>
@@ -54,6 +84,8 @@ export default function App() {
             onChangeText={(t) => setTimeout(parseInt(t, 10) || undefined)}
           />
           <Button title="pingAsync" onPress={handlePing} />
+          <Button title="startPinging ✅" onPress={handleStartPinging} />
+          <Button title="stopPinging ❌" onPress={handleStopPinging} />
         </Group>
         <Group name="Result">
           <Text>{result}</Text>

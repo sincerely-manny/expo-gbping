@@ -19,12 +19,19 @@ Pod::Spec.new do |s|
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'
-  s.dependency 'GBPing', '~> 1.5.1'
+  # s.dependency 'GBPing', '~> 1.5.1'
 
   # Swift/Objective-C compatibility
   s.pod_target_xcconfig = {
     'DEFINES_MODULE' => 'YES',
   }
 
-  s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+  # s.source_files = "**/*.{h,m,mm,swift,hpp,cpp}"
+  s.source_files = [
+    "**/*.{h,m,mm,swift,hpp,cpp}",
+    "ExpoGbping-Bridging-Header.h",
+    "vendor/GBPing/**/*.{h,m}"
+  ]
+  s.public_header_files = 'vendor/GBPing/**/*.h'
+  s.header_mappings_dir = 'vendor/GBPing'
 end
